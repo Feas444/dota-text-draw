@@ -4,6 +4,9 @@ config.json
 # runtime log
 dota_text_draw.log
 
+# pip deps marker created by the launcher
+.deps_ok
+
 # python
 __pycache__/
 *.pyc
