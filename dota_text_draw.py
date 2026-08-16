@@ -1021,6 +1021,7 @@ class App:
         self.speed = DEFAULT_SPEED
         self.hotkeys = {act: dict(hk) for act, hk in DEFAULT_HOTKEYS.items()}
         self._reload_hotkeys = True
+        self._hotkeys_disabled = False
         self.drawing = False
         self.prev_fg = None
         self.tray = None
@@ -1106,10 +1107,17 @@ class App:
         while True:
             if self._reload_hotkeys:
                 self._reload_hotkeys = False
-                errs = self._register_hotkeys()
-                if errs:
-                    print('Ошибки регистрации хоткеев: ' + '; '.join(errs))
-                    self.q.put(('hk_error', errs))
+                if self._hotkeys_disabled:
+                    # окно настроек/калибровки открыто: глобальные хоткеи
+                    # снимаем, иначе Windows «съедает» эту комбинацию и
+                    # повторно перебиндить её (например, настройки на C) нельзя.
+                    user32.UnregisterHotKey(None, HOTKEY_DRAW_ID)
+                    user32.UnregisterHotKey(None, HOTKEY_SETTINGS_ID)
+                else:
+                    errs = self._register_hotkeys()
+                    if errs:
+                        print('Ошибки регистрации хоткеев: ' + '; '.join(errs))
+                        self.q.put(('hk_error', errs))
             while user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, 1):
                 if msg.message == WM_QUIT:
                     return
@@ -1206,6 +1214,10 @@ class App:
             return
         self.close_overlay()
         self.close_settings()
+        # снимаем глобальные хоткеи, пока открыты настройки, — иначе Windows
+        # «съедает» зарегистрированную комбинацию и перебиндить её нельзя.
+        self._hotkeys_disabled = True
+        self._reload_hotkeys = True
         self.settings = SettingsWindow(self.root, self.speed, self.hotkeys,
                                        self.on_settings_saved,
                                        self.on_settings_cancel,
@@ -1217,6 +1229,7 @@ class App:
         save_speed(name)
         self.hotkeys = {act: dict(hk) for act, hk in hotkeys.items()}
         save_hotkeys(self.hotkeys)
+        self._hotkeys_disabled = False
         self._reload_hotkeys = True
         self.close_settings()
         print('Скорость: %s' % SPEED_PRESETS[name]['label'])
@@ -1225,6 +1238,8 @@ class App:
         self._tray_notify('Настройки сохранены. Хоткеи применены.')
 
     def on_settings_cancel(self):
+        self._hotkeys_disabled = False
+        self._reload_hotkeys = True
         self.close_settings()
 
     def on_settings_calibrate(self):
@@ -1245,17 +1260,23 @@ class App:
         if self.drawing or self.calibration is not None:
             return
         self.close_overlay()
+        self._hotkeys_disabled = True
+        self._reload_hotkeys = True
         self.calibration = Calibration(self.root, self.on_calibrated, self.on_calib_cancel)
 
     def on_calibrated(self, rect):
         self.config = rect
         save_config(rect)
+        self._hotkeys_disabled = False
+        self._reload_hotkeys = True
         self.close_calibration()
         print('Миникарта сохранена: left=%d top=%d right=%d bottom=%d'
               % (rect['left'], rect['top'], rect['right'], rect['bottom']))
         self._tray_notify('Миникарта сохранена. Ctrl+Alt+D — ввод текста.')
 
     def on_calib_cancel(self):
+        self._hotkeys_disabled = False
+        self._reload_hotkeys = True
         self.close_calibration()
 
     def close_calibration(self):
