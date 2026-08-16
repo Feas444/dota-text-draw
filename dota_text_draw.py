@@ -910,7 +910,7 @@ class SettingsWindow:
         self.win = tk.Toplevel(root)
         self.win.overrideredirect(True)
         self.win.attributes('-topmost', True)
-        w, h = 440, 400
+        w, h = 440, 440
         sw = root.winfo_screenwidth()
         self.win.geometry('%dx%d+%d+%d' % (w, h, sw // 2 - w // 2, 60))
         self.win.configure(bg='#26262b')
@@ -934,16 +934,18 @@ class SettingsWindow:
         hk_frame = tk.Frame(self.win, bg='#26262b')
         hk_frame.pack(fill='x', padx=20, pady=2)
         for act, label in (('draw', 'Ввод текста:'), ('settings', 'Настройки:')):
-            tk.Label(hk_frame, text=label, bg='#26262b', fg='#ffffff',
+            row = tk.Frame(hk_frame, bg='#26262b')
+            row.pack(fill='x', pady=3)
+            tk.Label(row, text=label, bg='#26262b', fg='#ffffff',
                      font=('Segoe UI', 11), width=14, anchor='w').pack(side='left')
-            btn = tk.Button(hk_frame, text=format_hotkey(self.hotkeys[act]),
+            btn = tk.Button(row, text=format_hotkey(self.hotkeys[act]),
                             command=lambda a=act: self._record(a),
                             bg='#1c1c20', fg='#ffffff', relief='flat',
                             font=('Segoe UI', 11), width=16)
             btn.pack(side='left', fill='x', expand=True, padx=(0, 4))
             self.hk_buttons[act] = btn
-            tk.Label(hk_frame, text='нажмите, чтобы изменить', bg='#26262b',
-                     fg='#8a8a94', font=('Segoe UI', 9)).pack(side='right')
+            tk.Label(row, text='нажмите, чтобы изменить', bg='#26262b',
+                     fg='#8a8a94', font=('Segoe UI', 9)).pack(side='left')
         tk.Label(self.win, text='Минимум один модификатор (Ctrl/Alt/Shift)',
                  bg='#26262b', fg='#66666e', font=('Segoe UI', 9)).pack(pady=(0, 4))
 
