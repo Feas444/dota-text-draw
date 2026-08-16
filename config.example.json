@@ -1,0 +1,25 @@
+{
+  "minimap": {
+    "left": 0,
+    "top": 0,
+    "right": 0,
+    "bottom": 0
+  },
+  "speed": "slow",
+  "hotkeys": {
+    "draw": {
+      "mods": [
+        "control",
+        "alt"
+      ],
+      "key": "d"
+    },
+    "settings": {
+      "mods": [
+        "control",
+        "alt"
+      ],
+      "key": "c"
+    }
+  }
+}

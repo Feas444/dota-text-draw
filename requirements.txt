@@ -1,0 +1,4 @@
+freetype-py>=2.3
+fonttools>=4.30
+pystray>=0.19
+pillow>=10.0

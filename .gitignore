@@ -1,0 +1,9 @@
+# personal config (calibration, speed, hotkeys)
+config.json
+
+# runtime log
+dota_text_draw.log
+
+# python
+__pycache__/
+*.pyc
