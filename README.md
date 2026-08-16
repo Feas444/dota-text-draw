@@ -5,11 +5,21 @@
 
 ## Установка
 
-Нужен Python 3 (Windows). Зависимости:
+Нужен Python 3 (Windows), можно с официального сайта python.org (отметь галочку
+«Add python.exe to PATH»). Установить зависимости в командной строке:
 
 ```
 py -m pip install -r requirements.txt
 ```
+
+Проверка окружения перед запуском:
+
+```
+py dota_text_draw.py --doctor
+```
+
+`--doctor` покажет версию Python, наличие зависимостей (freetype/fonttools/
+pystray/PIL), найденный шрифт и конфиг — так сразу видно, чего не хватает.
 
 ## Запуск
 
@@ -63,6 +73,7 @@ dota_text_draw.bat --console  # запуск с консолью (для отл�
 
 ```
 py dota_text_draw.py --selftest   # проверка конвертации текста в штрихи
+py dota_text_draw.py --doctor     # проверка окружения (зависимости, шрифт, конфиг)
 py dota_text_draw.py --test       # мышь движется по траектории БЕЗ нажатий
 ```
 

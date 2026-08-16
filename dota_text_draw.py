@@ -50,7 +50,19 @@ except ImportError:
 # --------------------------------------------------------------------------
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(SCRIPT_DIR, 'config.json')
-FONT_PATH = os.path.join(os.environ.get('WINDIR', r'C:\Windows'), 'Fonts', 'arial.ttf')
+
+# Шрифты, которые ищем по очереди (первый найденный и используется)
+_FONT_CANDIDATES = ('arial.ttf', 'arialbd.ttf', 'calibri.ttf', 'segoeui.ttf',
+                    'tahoma.ttf', 'verdana.ttf', 'times.ttf')
+FONT_DIR = os.path.join(os.environ.get('WINDIR', r'C:\Windows'), 'Fonts')
+
+
+def find_font_path():
+    for name in _FONT_CANDIDATES:
+        path = os.path.join(FONT_DIR, name)
+        if os.path.exists(path):
+            return path
+    return os.path.join(FONT_DIR, _FONT_CANDIDATES[0])
 
 MAX_TEXT_WIDTH_FRAC = 0.8   # доля ширины миникарты, занимаемая текстом
 STEP_PX = 2.0               # шаг интерполяции точек мыши, px (меньше = плотнее линия)
@@ -359,7 +371,7 @@ def _tray_image():
     d = ImageDraw.Draw(img)
     d.rounded_rectangle([2, 2, 62, 62], radius=14, fill=(41, 128, 185, 255))
     try:
-        font = ImageFont.truetype(FONT_PATH, 44)
+        font = ImageFont.truetype(find_font_path(), 44)
     except Exception:
         font = None
     d.text((16, 10), 'D', fill=(255, 255, 255, 255), font=font)
@@ -442,7 +454,7 @@ def _cubic_flatten(out, p0, c1, c2, p1, n=16):
 
 
 def _strokes_from_freetype(text, max_height):
-    face = freetype.Face(FONT_PATH)
+    face = freetype.Face(find_font_path())
     face.set_pixel_sizes(0, int(max_height))
     strokes = []
     x_cursor = 0.0
@@ -500,7 +512,7 @@ def _strokes_from_freetype(text, max_height):
 
 
 def _strokes_from_fonttools(text, max_height):
-    font = TTFont(FONT_PATH)
+    font = TTFont(find_font_path())
     gs = font.getGlyphSet()
     cmap = font.getBestCmap()
     units = float(font['head'].unitsPerEm)
@@ -1197,6 +1209,53 @@ class App:
 # --------------------------------------------------------------------------
 # Точка входа
 # --------------------------------------------------------------------------
+def _doctor():
+    """Проверка окружения на чистой машине: python, зависимости, шрифт, конфиг."""
+    import platform
+    print('Dota Text Draw — диагностика')
+    print('----------------------------')
+    print('Python: %s (%s)' % (platform.python_version(), platform.platform()))
+    errors = []
+
+    print('Зависимости:')
+    for name in ('freetype', 'fontTools', 'pystray', 'PIL'):
+        try:
+            mod = __import__('freetype' if name == 'freetype' else name)
+        except Exception:
+            mod = None
+        if mod is not None:
+            print('  [ok] %s' % name)
+        else:
+            print('  [нет] %s — установи: py -m pip install -r requirements.txt' % name)
+            errors.append(name)
+
+    font_path = find_font_path()
+    if os.path.exists(font_path):
+        print('Шрифт: [ok] %s' % font_path)
+    else:
+        print('Шрифт: [нет] %s — установи Arial или другой шрифт' % font_path)
+        errors.append('font')
+
+    cfg = load_config()
+    if cfg is None:
+        print('Конфиг: [нет config.json] — при первом запуске будет калибровка миникарты.')
+    else:
+        print('Конфиг: [ok] миникарта left=%s top=%s right=%s bottom=%s'
+              % (cfg['left'], cfg['top'], cfg['right'], cfg['bottom']))
+    print('Скорость: %s, хоткеи: ввод %s, настройки %s'
+          % (load_speed(), format_hotkey(load_hotkeys()['draw']),
+             format_hotkey(load_hotkeys()['settings'])))
+
+    if errors:
+        print('----------------------------')
+        print('Проблемы: %s' % ', '.join(errors))
+        print('Установи зависимости и повтори. Или запусти с консолью и пришли вывод.')
+    else:
+        print('----------------------------')
+        print('Всё в порядке. Запуск: dota_text_draw.bat (двойной клик).')
+    sys.exit(0 if not errors else 1)
+
+
 def main():
     _setup_streams()
     if not _single_instance():
@@ -1216,7 +1275,9 @@ def main():
 
 
 if __name__ == '__main__':
-    if '--selftest' in sys.argv:
+    if '--doctor' in sys.argv:
+        _doctor()
+    elif '--selftest' in sys.argv:
         _setup_streams()
         if hasattr(sys.stdout, 'reconfigure'):
             try:
