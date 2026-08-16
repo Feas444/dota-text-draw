@@ -5,7 +5,13 @@ Dota Text Draw
 
 Хоткеи (по умолчанию, меняются в настройках Ctrl+Alt+C):
   Ctrl+Alt+D  — открыть оверлей ввода текста (Enter — нарисовать, Esc — отмена)
-  Ctrl+Alt+C  — открыть настройки (скорость и горячие клавиши)
+  Ctrl+Alt+C  — открыть настройки (скорость, стиль букв и горячие клавиши)
+
+Стили букв (выбираются в настройках, хранятся в config.json):
+  outline — обычный контур шрифта
+  stick   — буквы-палочки (встроенный мини-шрифт, быстрее)
+
+В оверлее ввода доступны мини-картинки: Круг / Череп / Сердце (кнопка «Рисунок ▸»).
 
 Запуск:
   python dota_text_draw.py              # основная работа
@@ -83,6 +89,7 @@ SPEED_PRESETS = {
              'step_px': 2.0, 'step_delay': 0.003, 'press_delay': 0.05, 'simplify_eps': 0.8},
 }
 DEFAULT_SPEED = 'slow'
+DEFAULT_STYLE = 'outline'   # 'outline' — контур шрифта; 'stick' — буквы-палочки
 
 
 def apply_speed(name):
@@ -340,6 +347,19 @@ def save_hotkeys(hotkeys):
     _save_all(data)
 
 
+def load_style():
+    try:
+        return _load_all().get('style', DEFAULT_STYLE)
+    except (OSError, ValueError):
+        return DEFAULT_STYLE
+
+
+def save_style(name):
+    data = _load_all()
+    data['style'] = name
+    _save_all(data)
+
+
 LOG_PATH = os.path.join(SCRIPT_DIR, 'dota_text_draw.log')
 
 
@@ -577,7 +597,9 @@ def _strokes_from_fonttools(text, max_height):
     return strokes
 
 
-def text_to_strokes(text, max_width, max_height):
+def text_to_strokes(text, max_width, max_height, style='outline'):
+    if style == 'stick':
+        return _stick_strokes(text, max_width, max_height)
     if freetype is not None:
         strokes = _strokes_from_freetype(text, max_height)
     elif TTFont is not None:
@@ -597,6 +619,205 @@ def text_to_strokes(text, max_width, max_height):
     h = max(ymax - ymin, 1e-6)
     scale = min(max_width / w, max_height / h)
 
+    out = [[((p[0] - xmin) * scale, (h - (p[1] - ymin)) * scale) for p in pl] for pl in strokes]
+    return out, w * scale, h * scale
+
+
+# --------------------------------------------------------------------------
+# Стиль «палочки»: встроенный векторный алфавит (моноширинный)
+# --------------------------------------------------------------------------
+# Каждая буква — список полилиний; координаты в клетке шириной ~1.0, высотой
+# ~1.4 (Y вверх, как в тексте). Все символы одной ширины (моноширинные),
+# поэтому читаются как «блочные палочки». Строчные буквы отображаются как
+# заглавные (общая практика для таких мини-шрифтов).
+STICK_GLYPHS = {
+    # --- цифры ---
+    '0': [[(0.5, 1.3), (0.12, 1.05), (0.12, 0.35), (0.5, 0.1), (0.88, 0.35), (0.88, 1.05), (0.5, 1.3)]],
+    '1': [[(0.55, 1.3), (0.55, 0.1)], [(0.25, 0.5), (0.55, 0.28)]],
+    '2': [[(0.1, 1.15), (0.55, 1.35), (0.9, 1.1), (0.9, 0.75), (0.1, 0.1), (0.9, 0.1)]],
+    '3': [[(0.12, 1.2), (0.7, 1.35), (0.88, 1.0), (0.5, 0.7), (0.88, 0.4), (0.7, 0.05), (0.12, 0.2)]],
+    '4': [[(0.2, 0.55), (0.9, 0.55), (0.7, 1.4)], [(0.7, 1.4), (0.7, 0.1)]],
+    '5': [[(0.9, 1.4), (0.15, 1.4), (0.15, 0.7), (0.7, 0.7), (0.9, 0.1), (0.15, 0.1)]],
+    '6': [[(0.85, 1.3), (0.2, 0.9), (0.2, 0.1), (0.8, 0.1), (0.85, 0.7), (0.45, 0.9)]],
+    '7': [[(0.12, 1.4), (0.88, 1.4), (0.35, 0.15)]],
+    '8': [[(0.5, 0.7), (0.15, 1.0), (0.15, 1.4), (0.5, 1.4), (0.85, 1.0), (0.85, 0.7),
+           (0.5, 0.7), (0.15, 0.4), (0.15, 0.1), (0.5, 0.1), (0.85, 0.4), (0.85, 0.7)]],
+    '9': [[(0.15, 0.1), (0.85, 0.45), (0.9, 1.1), (0.45, 1.3), (0.2, 1.1), (0.15, 0.45)]],
+
+    # --- латиница ---
+    'A': [[(0, 0), (0.5, 1.4), (1, 0)], [(0.15, 0.62), (0.85, 0.62)]],
+    'B': [[(0, 0), (0, 1.4), (0.72, 1.4), (0.72, 0.72), (0.05, 0.72)],
+          [(0.05, 0.72), (0.72, 0.68), (0.72, 0), (0, 0)]],
+    'C': [[(0.9, 0.3), (0.3, 0.0), (0.1, 0.7), (0.3, 1.4), (0.9, 1.1)]],
+    'D': [[(0, 0), (0, 1.4), (0.6, 1.4), (0.95, 1.05), (0.95, 0.35), (0.6, 0), (0, 0)]],
+    'E': [[(0.9, 1.4), (0, 1.4), (0, 0), (0.9, 0)], [(0, 0.7), (0.7, 0.7)]],
+    'F': [[(0.9, 1.4), (0, 1.4), (0, 0)], [(0, 0.7), (0.7, 0.7)]],
+    'G': [[(0.9, 1.1), (0.3, 1.4), (0.1, 0.7), (0.3, 0.0), (0.9, 0.3), (0.9, 0.7), (0.5, 0.7)]],
+    'H': [[(0, 0), (0, 1.4)], [(1, 0), (1, 1.4)], [(0, 0.7), (1, 0.7)]],
+    'I': [[(0.2, 1.4), (0.8, 1.4)], [(0.5, 1.4), (0.5, 0)], [(0.2, 0), (0.8, 0)]],
+    'J': [[(0.2, 1.4), (0.8, 1.4)], [(0.7, 1.4), (0.7, 0.3), (0.4, 0.0), (0.1, 0.3)]],
+    'K': [[(0, 0), (0, 1.4)], [(0.9, 1.4), (0.1, 0.7), (0.9, 0)]],
+    'L': [[(0, 1.4), (0, 0), (0.9, 0)]],
+    'M': [[(0, 0), (0, 1.4), (0.5, 0.5), (1, 1.4), (1, 0)]],
+    'N': [[(0, 0), (0, 1.4), (1, 0), (1, 1.4)]],
+    'O': [[(0.5, 1.4), (0.12, 1.05), (0.12, 0.35), (0.5, 0), (0.88, 0.35), (0.88, 1.05), (0.5, 1.4)]],
+    'P': [[(0, 0), (0, 1.4), (0.75, 1.4), (0.75, 0.72), (0, 0.72)]],
+    'Q': [[(0.5, 1.4), (0.12, 1.05), (0.12, 0.35), (0.5, 0), (0.88, 0.35), (0.88, 1.05), (0.5, 1.4)],
+          [(0.45, 0.45), (0.9, 0.0)]],
+    'R': [[(0, 0), (0, 1.4), (0.75, 1.4), (0.75, 0.72), (0, 0.72)],
+          [(0.1, 0.72), (0.8, 0.68), (0.8, 0), (0.1, 0)]],
+    'S': [[(0.88, 1.1), (0.4, 1.4), (0.12, 1.05), (0.12, 0.7), (0.5, 0.55),
+           (0.88, 0.4), (0.88, 0.05), (0.4, 0.0), (0.12, 0.3)]],
+    'T': [[(0, 1.4), (1, 1.4)], [(0.5, 1.4), (0.5, 0)]],
+    'U': [[(0, 1.4), (0, 0.3), (0.5, 0), (1, 0.3), (1, 1.4)]],
+    'V': [[(0, 1.4), (0.5, 0), (1, 1.4)]],
+    'W': [[(0, 1.4), (0.25, 0), (0.5, 0.8), (0.75, 0), (1, 1.4)]],
+    'X': [[(0, 1.4), (1, 0)], [(1, 1.4), (0, 0)]],
+    'Y': [[(0, 1.4), (0.5, 0.7)], [(1, 1.4), (0.5, 0.7)], [(0.5, 0.7), (0.5, 0)]],
+    'Z': [[(0, 1.4), (1, 1.4), (0, 0), (1, 0)]],
+
+    # --- кириллица (общие с латиницей буквы используют те же формы) ---
+    # А=A В=B Е=E К=K М=M Н=N О=O Р=P С=C Т=T У=Y Х=X — берутся из латиницы
+    'Г': [[(0, 1.4), (0.9, 1.4)], [(0, 1.4), (0, 0)]],
+    'Д': [[(0, 1.4), (1, 1.4)], [(0, 1.4), (0.5, 0), (1, 1.4)]],
+    'Ж': [[(0, 1.4), (1, 0)], [(0, 0), (1, 1.4)], [(0.15, 0.7), (0.85, 0.7)]],
+    'З': [[(0.88, 1.1), (0.3, 1.4), (0.1, 0.7), (0.3, 0.0), (0.88, 0.0)]],
+    'И': [[(0, 0), (0, 1.2)], [(1, 0), (1, 1.2)], [(0, 1.2), (0.5, 1.4), (1, 1.2)]],
+    'Й': [[(0, 0), (0, 1.2)], [(1, 0), (1, 1.2)], [(0, 1.2), (0.5, 1.4), (1, 1.2)], [(0.5, 1.4), (0.5, 1.8)]],
+    'Л': [[(0, 1.4), (0.5, 0.6), (1, 1.4)]],
+    'П': [[(0, 1.4), (0, 0.6), (1, 0.6), (1, 1.4)]],
+    'Ф': [[(0.5, 1.4), (0.15, 1.05), (0.15, 0.35), (0.5, 0), (0.85, 0.35), (0.85, 1.05), (0.5, 1.4)],
+          [(0.5, 1.4), (0.5, 0)]],
+    'Ц': [[(0, 0.3), (0.5, 0.0), (0.9, 0.3)], [(0.9, 0.3), (0.9, 1.4)]],
+    'Ч': [[(0, 1.4), (0.5, 0.7)], [(1, 1.4), (0.5, 0.7)], [(0.5, 0.7), (0.5, 0)]],
+    'Ш': [[(0, 0), (0, 1.4)], [(0.5, 0), (0.5, 1.4)], [(1, 0), (1, 1.4)], [(0, 1.4), (1, 1.4)]],
+    'Щ': [[(0, 0), (0, 1.4)], [(0.5, 0), (0.5, 1.4)], [(1, 0), (1, 1.4)],
+          [(0, 1.4), (1, 1.4)], [(0, 0.7), (1, 0.7)]],
+    'Ъ': [[(0, 1.4), (0, 0.4)], [(0, 1.4), (0.6, 1.4)], [(0, 0.4), (0.6, 0.2)]],
+    'Ы': [[(0, 1.4), (0, 0)], [(0.5, 1.4), (0.5, 0)], [(0.5, 1.4), (1, 1.1), (1, 0)]],
+    'Ь': [[(0, 1.4), (0, 0.4)], [(0, 0.4), (0.6, 0.2)]],
+    'Э': [[(0.1, 1.1), (0.7, 1.4), (0.9, 0.7), (0.7, 0.0), (0.1, 0.3)], [(0.1, 0.7), (0.5, 0.7)]],
+    'Ю': [[(0.1, 1.4), (0.1, 0.3), (0.5, 0), (0.9, 0.3), (0.9, 1.4)], [(0.1, 1.4), (0.9, 1.4)]],
+    'Я': [[(1, 1.4), (0.2, 1.4), (0.2, 0)], [(0.2, 0.7), (0.9, 0.7), (0.9, 0)]],
+    'Б': [[(0, 1.4), (0, 0)], [(0, 0.65), (0.78, 0.65), (0.78, 0), (0, 0)]],
+    'Ё': [[(0.9, 1.4), (0, 1.4), (0, 0), (0.9, 0)], [(0, 0.7), (0.7, 0.7)],
+          [(0.2, 1.5), (0.2, 1.72)], [(0.55, 1.5), (0.55, 1.72)]],
+
+    # --- знаки препинания ---
+    '!': [[(0.5, 1.4), (0.5, 0.4)], [(0.5, 0.15), (0.5, 0.25)]],
+    '?': [[(0.15, 1.4), (0.7, 1.4), (0.85, 0.95), (0.5, 0.7), (0.5, 0.4)], [(0.5, 0.15), (0.5, 0.25)]],
+    '.': [[(0.5, 0.15), (0.5, 0.25)]],
+    ',': [[(0.5, 0.25), (0.35, 0.0)]],
+    ':': [[(0.4, 0.85), (0.4, 0.95)], [(0.6, 0.35), (0.6, 0.45)]],
+    '-': [[(0.1, 0.7), (0.9, 0.7)]],
+    '(': [[(0.7, 1.4), (0.3, 0.9), (0.3, 0.5), (0.7, 0.0)]],
+    ')': [[(0.3, 1.4), (0.7, 0.9), (0.7, 0.5), (0.3, 0.0)]],
+    '/': [[(0.8, 1.4), (0.2, 0.0)]],
+    '+': [[(0.1, 0.7), (0.9, 0.7)], [(0.5, 1.1), (0.5, 0.3)]],
+    '=': [[(0.1, 0.85), (0.9, 0.85)], [(0.1, 0.55), (0.9, 0.55)]],
+    '#': [[(0.25, 0), (0.25, 1.4)], [(0.75, 0), (0.75, 1.4)],
+          [(0, 0.95), (1, 0.95)], [(0, 0.45), (1, 0.45)]],
+}
+
+_STICK_CW = 1.0     # ширина клетки
+_STICK_GAP = 0.35   # зазор между буквами
+
+
+def _stick_strokes(text, max_w, max_h):
+    strokes = []
+    x = 0.0
+    for ch in text:
+        if ch == ' ':
+            x += _STICK_CW + _STICK_GAP
+            continue
+        key = ch if ch in STICK_GLYPHS else ch.upper()
+        g = STICK_GLYPHS.get(key)
+        if not g:
+            x += _STICK_CW + _STICK_GAP
+            continue
+        for pl in g:
+            strokes.append([(px + x, py) for (px, py) in pl])
+        x += _STICK_CW + _STICK_GAP
+    if not strokes:
+        return [], 0.0, 0.0
+    flat = [p for pl in strokes for p in pl]
+    xs = [p[0] for p in flat]
+    ys = [p[1] for p in flat]
+    xmin, xmax = min(xs), max(xs)
+    ymin, ymax = min(ys), max(ys)
+    w = max(xmax - xmin, 1e-6)
+    h = max(ymax - ymin, 1e-6)
+    scale = min(max_w / w, max_h / h)
+    out = [[((p[0] - xmin) * scale, (h - (p[1] - ymin)) * scale) for p in pl] for pl in strokes]
+    return out, w * scale, h * scale
+
+
+# --------------------------------------------------------------------------
+# Мини-картинки (те же полилинии, координаты в квадрате 0..1, Y вверх)
+# --------------------------------------------------------------------------
+def _shape_circle(n=26):
+    pts = []
+    for i in range(n + 1):
+        a = 2 * math.pi * i / n
+        pts.append((0.5 + 0.46 * math.cos(a), 0.5 + 0.46 * math.sin(a)))
+    return [pts]
+
+
+def _shape_heart(n=32):
+    raw = []
+    for i in range(n + 1):
+        t = math.pi * 2 * i / n
+        x = 16 * math.sin(t) ** 3
+        y = 13 * math.cos(t) - 5 * math.cos(2 * t) - 2 * math.cos(3 * t) - math.cos(4 * t)
+        raw.append((x, y))
+    xs = [p[0] for p in raw]
+    ys = [p[1] for p in raw]
+    xmin, xmax = min(xs), max(xs)
+    ymin, ymax = min(ys), max(ys)
+    return [[((x - xmin) / (xmax - xmin), (y - ymin) / (ymax - ymin)) for (x, y) in raw]]
+
+
+def _shape_skull():
+    head = [(0.22, 0.92), (0.2, 0.6), (0.3, 0.32), (0.5, 0.26),
+            (0.7, 0.32), (0.8, 0.6), (0.78, 0.92), (0.68, 1.0),
+            (0.32, 1.0), (0.22, 0.92)]
+    eye_l = []
+    eye_r = []
+    for i in range(13):
+        a = 2 * math.pi * i / 12
+        eye_l.append((0.37 + 0.12 * math.cos(a), 0.62 + 0.13 * math.sin(a)))
+        eye_r.append((0.63 + 0.12 * math.cos(a), 0.62 + 0.13 * math.sin(a)))
+    nose = [(0.5, 0.55), (0.5, 0.45)]
+    teeth = [[(0.35, 0.86), (0.65, 0.86)],
+             [(0.42, 0.86), (0.42, 0.78)],
+             [(0.5, 0.86), (0.5, 0.77)],
+             [(0.58, 0.86), (0.58, 0.78)]]
+    return [head, eye_l, eye_r, nose] + teeth
+
+
+SHAPE_BUILDERS = {
+    'circle': _shape_circle,
+    'skull': _shape_skull,
+    'heart': _shape_heart,
+}
+SHAPE_LABELS = {'circle': 'Круг', 'skull': 'Череп', 'heart': 'Сердце'}
+
+
+def shape_to_strokes(name, max_w, max_h):
+    build = SHAPE_BUILDERS.get(name)
+    if build is None:
+        return [], 0.0, 0.0
+    strokes = build()
+    if not strokes:
+        return [], 0.0, 0.0
+    flat = [p for pl in strokes for p in pl]
+    xs = [p[0] for p in flat]
+    ys = [p[1] for p in flat]
+    xmin, xmax = min(xs), max(xs)
+    ymin, ymax = min(ys), max(ys)
+    w = max(xmax - xmin, 1e-6)
+    h = max(ymax - ymin, 1e-6)
+    scale = min(max_w / w, max_h / h)
     out = [[((p[0] - xmin) * scale, (h - (p[1] - ymin)) * scale) for p in pl] for pl in strokes]
     return out, w * scale, h * scale
 
@@ -699,36 +920,73 @@ def trace_path(strokes, start_x, start_y):
 # Оверлей ввода текста
 # --------------------------------------------------------------------------
 class DrawOverlay:
-    def __init__(self, root, on_submit, on_cancel):
+    def __init__(self, root, on_submit, on_cancel, on_shape):
+        self.on_submit = on_submit
+        self.on_cancel = on_cancel
+        self.on_shape = on_shape
+        self.root = root
+        self.mode = 'text'
         self.win = tk.Toplevel(root)
         self.win.overrideredirect(True)
         self.win.attributes('-topmost', True)
-        w, h = 380, 70
+        w, h = 380, 130
         sw = root.winfo_screenwidth()
         self.win.geometry('%dx%d+%d+40' % (w, h, sw // 2 - w // 2))
         self.win.configure(bg='#26262b')
 
-        row = tk.Frame(self.win, bg='#26262b')
-        row.pack(fill='both', padx=12, pady=(10, 2))
+        top = tk.Frame(self.win, bg='#26262b')
+        top.pack(fill='x', padx=12, pady=(8, 0))
+        self.toggle_btn = tk.Button(top, text='Рисунок ▸', command=self._toggle,
+                                    bg='#3d3d44', fg='#ffffff', relief='flat',
+                                    font=('Segoe UI', 10), width=12)
+        self.toggle_btn.pack(side='right')
 
-        vcmd = (root.register(self._limit), '%P')
-        self.entry = tk.Entry(row, font=('Segoe UI', 16), width=24, justify='center',
+        self.content = tk.Frame(self.win, bg='#26262b')
+        self.content.pack(fill='both', expand=True, padx=12, pady=(6, 4))
+
+        self.entry = None
+        self._build_text()
+
+        self.win.bind('<Escape>', lambda e: on_cancel())
+        self.win.update_idletasks()
+        self.win.focus_force()
+
+    def _build_text(self):
+        for w in self.content.winfo_children():
+            w.destroy()
+        vcmd = (self.root.register(self._limit), '%P')
+        self.entry = tk.Entry(self.content, font=('Segoe UI', 16), width=24, justify='center',
                               bg='#1c1c20', fg='#ffffff', insertbackground='#ffffff',
                               relief='flat', highlightthickness=1, highlightbackground='#3d3d44',
                               validate='key', validatecommand=vcmd)
-        self.entry.pack(side='left', ipady=3, expand=True, fill='x')
-
-        self.entry.bind('<Return>', lambda e: on_submit(self.entry.get().strip()))
-        self.entry.bind('<Escape>', lambda e: on_cancel())
-        self.win.bind('<Escape>', lambda e: on_cancel())
-
-        hint = tk.Label(self.win, text='Enter — нарисовать    Esc — отмена',
-                        bg='#26262b', fg='#8a8a94', font=('Segoe UI', 9))
-        hint.pack()
-
-        self.win.update_idletasks()
-        self.win.focus_force()
+        self.entry.pack(fill='x', ipady=3)
+        self.entry.bind('<Return>', lambda e: self.on_submit(self.entry.get().strip()))
         self.entry.focus_set()
+        tk.Label(self.content, text='Enter — нарисовать    Esc — отмена',
+                 bg='#26262b', fg='#8a8a94', font=('Segoe UI', 9)).pack(pady=(4, 0))
+
+    def _build_picture(self):
+        for w in self.content.winfo_children():
+            w.destroy()
+        tk.Label(self.content, text='Выбери фигуру:', bg='#26262b', fg='#ffffff',
+                 font=('Segoe UI', 11)).pack(pady=(2, 4))
+        grid = tk.Frame(self.content, bg='#26262b')
+        grid.pack()
+        for name in ('circle', 'skull', 'heart'):
+            tk.Button(grid, text=SHAPE_LABELS[name], width=12,
+                      command=lambda n=name: self.on_shape('__shape__:' + n),
+                      bg='#1c1c20', fg='#ffffff', relief='flat',
+                      font=('Segoe UI', 11)).pack(side='left', padx=4)
+
+    def _toggle(self):
+        if self.mode == 'text':
+            self.mode = 'picture'
+            self.toggle_btn.config(text='◂ Текст')
+            self._build_picture()
+        else:
+            self.mode = 'text'
+            self.toggle_btn.config(text='Рисунок ▸')
+            self._build_text()
 
     def _limit(self, value):
         return len(value) <= MAX_CHARS
@@ -807,11 +1065,13 @@ class Calibration:
 # Окно настроек
 # --------------------------------------------------------------------------
 class SettingsWindow:
-    def __init__(self, root, current_speed, current_hotkeys, on_save, on_cancel, on_calibrate):
+    def __init__(self, root, current_speed, current_hotkeys, current_style,
+                 on_save, on_cancel, on_calibrate):
         self.on_save = on_save
         self.on_cancel = on_cancel
         self.on_calibrate = on_calibrate
         self.speed = tk.StringVar(value=current_speed)
+        self.style = tk.StringVar(value=current_style)
         self.hotkeys = {act: dict(hk) for act, hk in current_hotkeys.items()}
         self.recording = None
         self.hk_buttons = {}
@@ -819,7 +1079,7 @@ class SettingsWindow:
         self.win = tk.Toplevel(root)
         self.win.overrideredirect(True)
         self.win.attributes('-topmost', True)
-        w, h = 440, 400
+        w, h = 440, 470
         sw = root.winfo_screenwidth()
         self.win.geometry('%dx%d+%d+%d' % (w, h, sw // 2 - w // 2, 60))
         self.win.configure(bg='#26262b')
@@ -834,6 +1094,17 @@ class SettingsWindow:
         frame.pack(fill='both', padx=20, pady=2)
         for key, p in SPEED_PRESETS.items():
             tk.Radiobutton(frame, text=p['label'], value=key, variable=self.speed,
+                           bg='#26262b', fg='#ffffff', selectcolor='#3d3d44',
+                           activebackground='#26262b', activeforeground='#ffffff',
+                           font=('Segoe UI', 11), anchor='w').pack(fill='x', pady=2)
+
+        tk.Label(self.win, text='Стиль букв', bg='#26262b', fg='#8a8a94',
+                 font=('Segoe UI', 10)).pack(pady=(8, 0))
+        sframe = tk.Frame(self.win, bg='#26262b')
+        sframe.pack(fill='both', padx=20, pady=2)
+        for value, label in (('outline', 'Обычный (контур шрифта)'),
+                             ('stick', 'Палочки (состоит из палок)')):
+            tk.Radiobutton(sframe, text=label, value=value, variable=self.style,
                            bg='#26262b', fg='#ffffff', selectcolor='#3d3d44',
                            activebackground='#26262b', activeforeground='#ffffff',
                            font=('Segoe UI', 11), anchor='w').pack(fill='x', pady=2)
@@ -907,7 +1178,7 @@ class SettingsWindow:
         return 'break'
 
     def _save(self):
-        self.on_save(self.speed.get(), self.hotkeys)
+        self.on_save(self.speed.get(), self.hotkeys, self.style.get())
 
     def _cancel(self):
         self.on_cancel()
@@ -928,6 +1199,7 @@ class App:
         self.calibration = None
         self.settings = None
         self.speed = DEFAULT_SPEED
+        self.style = DEFAULT_STYLE
         self.hotkeys = {act: dict(hk) for act, hk in DEFAULT_HOTKEYS.items()}
         self._reload_hotkeys = True
         self.drawing = False
@@ -937,6 +1209,7 @@ class App:
     def start(self):
         self.speed = load_speed()
         apply_speed(self.speed)
+        self.style = load_style()
         self.hotkeys = load_hotkeys()
         print('Скорость: %s' % SPEED_PRESETS[self.speed]['label'])
         print('Хоткеи: ввод — %s, настройки — %s'
@@ -1059,10 +1332,12 @@ class App:
             'Dota Text Draw',
             'Ввод текста — %s\nНастройки — %s\n'
             'Enter — нарисовать, Esc — отмена\n\n'
-            'Хоткеи и скорость меняются в настройках (%s).\n'
+            'Стиль букв: %s (меняется в настройках, %s).\n'
+            'В окне ввода можно переключиться на «Рисунок» (круг/череп/сердце).\n'
             'Dota должна быть в режиме «Окно без рамки».'
             % (format_hotkey(self.hotkeys['draw']),
                format_hotkey(self.hotkeys['settings']),
+               'Палочки' if self.style == 'stick' else 'Обычный',
                format_hotkey(self.hotkeys['settings'])),
         )
 
@@ -1088,7 +1363,7 @@ class App:
 
     def open_draw_overlay(self):
         self.prev_fg = user32.GetForegroundWindow()
-        self.overlay = DrawOverlay(self.root, self.on_submit, self.on_cancel)
+        self.overlay = DrawOverlay(self.root, self.on_submit, self.on_cancel, self.on_submit)
 
     def close_overlay(self):
         if self.overlay is not None:
@@ -1116,17 +1391,19 @@ class App:
             return
         self.close_overlay()
         self.close_settings()
-        self.settings = SettingsWindow(self.root, self.speed, self.hotkeys,
+        self.settings = SettingsWindow(self.root, self.speed, self.hotkeys, self.style,
                                        self.on_settings_saved,
                                        self.on_settings_cancel,
                                        self.on_settings_calibrate)
 
-    def on_settings_saved(self, name, hotkeys):
+    def on_settings_saved(self, name, hotkeys, style):
         self.speed = name
         apply_speed(name)
         save_speed(name)
         self.hotkeys = {act: dict(hk) for act, hk in hotkeys.items()}
         save_hotkeys(self.hotkeys)
+        self.style = style
+        save_style(style)
         self._reload_hotkeys = True
         self.close_settings()
         print('Скорость: %s' % SPEED_PRESETS[name]['label'])
@@ -1188,13 +1465,24 @@ class App:
             rh = rect['bottom'] - rect['top']
             max_w = max(20.0, rw * MAX_TEXT_WIDTH_FRAC)
             max_h = max(12.0, rh * MAX_TEXT_WIDTH_FRAC)
-            strokes, tw, th = text_to_strokes(text, max_w, max_h)
+            if text.startswith('__shape__:'):
+                name = text[len('__shape__:'):]
+                strokes, tw, th = shape_to_strokes(name, max_w, max_h)
+                label = 'фигуру «%s»' % SHAPE_LABELS.get(name, name)
+            else:
+                strokes, tw, th = text_to_strokes(text, max_w, max_h, style=self.style)
+                label = '«%s» (стиль %s)' % (text, self.style)
             if not strokes:
                 print('Нет штрихов для рисования.')
                 return
             start_x = rect['left'] + (rw - tw) / 2
             start_y = rect['top'] + (rh - th) / 2
-            print('Рисую «%s» ...' % text)
+            pts = sum(len(pl) for pl in strokes)
+            length = sum(math.hypot(pl[i + 1][0] - pl[i][0], pl[i + 1][1] - pl[i][1])
+                         for pl in strokes for i in range(len(pl) - 1))
+            est = pts * STEP_DELAY + len(strokes) * (PRESS_DELAY * 2 + 0.12)
+            print('Рисую %s ... (%d точек, ~%.0f px, ~%.1f с)'
+                  % (label, pts, length, est))
             if TEST_MODE:
                 trace_path(strokes, start_x, start_y)
             else:
@@ -1242,8 +1530,9 @@ def _doctor():
     else:
         print('Конфиг: [ok] миникарта left=%s top=%s right=%s bottom=%s'
               % (cfg['left'], cfg['top'], cfg['right'], cfg['bottom']))
-    print('Скорость: %s, хоткеи: ввод %s, настройки %s'
-          % (load_speed(), format_hotkey(load_hotkeys()['draw']),
+    print('Скорость: %s, стиль: %s, хоткеи: ввод %s, настройки %s'
+          % (load_speed(), load_style(),
+             format_hotkey(load_hotkeys()['draw']),
              format_hotkey(load_hotkeys()['settings'])))
 
     if errors:
@@ -1286,10 +1575,23 @@ if __name__ == '__main__':
                 pass
         import traceback
         try:
-            strokes, tw, th = text_to_strokes('AB', 300, 60)
-            print('strokes=%d  width=%.1f  height=%.1f' % (len(strokes), tw, th))
-            for i, pl in enumerate(strokes[:6]):
-                print(' stroke %d: %d точек, первая=%s' % (i, len(pl), pl[0]))
+            def _stats(strokes):
+                pts = sum(len(pl) for pl in strokes)
+                length = sum(math.hypot(pl[i + 1][0] - pl[i][0], pl[i + 1][1] - pl[i][1])
+                             for pl in strokes for i in range(len(pl) - 1))
+                return pts, length
+
+            for label, args in (('outline', ('AB', 300, 60, 'outline')),
+                                ('stick', ('Привет GG 123', 300, 60, 'stick'))):
+                s, tw, th = text_to_strokes(*args)
+                pts, length = _stats(s)
+                print('%s: strokes=%d  width=%.1f  height=%.1f  points=%d  length=%.1f'
+                      % (label, len(s), tw, th, pts, length))
+            for name in ('circle', 'skull', 'heart'):
+                s, tw, th = shape_to_strokes(name, 200, 200)
+                pts, length = _stats(s)
+                print('shape %s: strokes=%d  points=%d  length=%.1f'
+                      % (name, len(s), pts, length))
         except Exception:
             traceback.print_exc()
         sys.exit(0)
